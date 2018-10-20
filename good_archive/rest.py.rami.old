@@ -1,0 +1,446 @@
+from flask import Flask
+from flask import Flask
+from flask import Flask
+import requests
+import json as j
+import time
+import paramiko
+import mysql.connector
+from mysql.connector import errorcode
+app = Flask(__name__)
+
+###AUTH FUNCTION###
+def os_auth():
+  url = "http://10.29.114.56:5000/v3/auth/tokens"
+  data = {
+      "auth": {
+          "identity": {
+              "methods": [
+                  "password"
+              ],
+              "password": {
+                  "user": {
+                      "id": "cc06e6c4494e4c7287ed4dc6e6a0a804",
+                      "password": "K@ngar0o1!00"
+                  }
+              }
+          },
+          "scope": {
+              "project": {
+                  "id": "5403ac818d0b4e0f94140e686b482994"
+              }
+          }
+      }
+  }
+  headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
+  r = requests.post(url, data=j.dumps(data), headers=headers)
+  my_token = j.dumps(r.headers['X-Subject-Token'])
+  my_token = my_token.replace('"', '')
+  return my_token
+###END AUTH###
+
+
+@app.route("/")
+def trove_create():
+  url = "http://10.29.114.56:5000/v3/auth/tokens"
+  data = {
+      "auth": {
+          "identity": {
+              "methods": [
+                  "password"
+              ],
+              "password": {
+                  "user": {
+                      "id": "cc06e6c4494e4c7287ed4dc6e6a0a804",
+                      "password": "K@ngar0o1!00"
+                  }
+              }
+          },
+          "scope": {
+              "project": {
+                  "id": "5403ac818d0b4e0f94140e686b482994"
+              }
+          }
+      }
+  }
+  headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
+  r = requests.post(url, data=j.dumps(data), headers=headers)
+  my_token = j.dumps(r.headers['X-Subject-Token'])
+  my_token = my_token.replace('"', '')
+  time.sleep(1)
+  ####################################################
+  #######Create Trove Instance for use cloud-bolt####
+  url2 = "http://10.29.114.140:8779/v1.0/5403ac818d0b4e0f94140e686b482994/instances"
+  data2 = {
+      "instance": {
+          "databases": [
+              {
+                  "character_set": "utf8",
+                  "collate": "utf8_general_ci",
+                  "name": "test_rami"
+              }
+          ],
+          "flavorRef": "8c551377-a38c-4d4c-be92-555226036c20",
+          "name": "test_rami",
+          "users": [
+              {
+                  "databases": [
+                      {
+                          "name": "test_rami"
+                      }
+                  ],
+                  "name": "rmansour",
+                  "password": "rmansour"
+              }
+          ],
+          "volume": {
+              "size": 2
+          },
+          "datastore": {
+              "version": "5.6",
+              "type": "percona"
+          }
+      }
+  }
+  
+  headers = {'Content-type': 'application/json', 'X-Auth-Token': my_token}
+  r2 = requests.post(url2, data=j.dumps(data2), headers=headers)
+  #print(r2)
+
+  return "Creating"
+    
+  ####################################################
+  #######Get IP of new instance####################### MAKE SURE TO CHANGE THIS WHEN DOING FUNCTIONS TO TAKE NAME OF SERVER INSTANCE TO FIND IP################
+@app.route("/get_trove_ip")
+def trove_get_trove_ip():
+  url = "http://10.29.114.56:5000/v3/auth/tokens"
+  data = {
+      "auth": {
+          "identity": {
+              "methods": [
+                  "password"
+              ],
+              "password": {
+                  "user": {
+                      "id": "cc06e6c4494e4c7287ed4dc6e6a0a804",
+                      "password": "K@ngar0o1!00"
+                  }
+              }
+          },
+          "scope": {
+              "project": {
+                  "id": "5403ac818d0b4e0f94140e686b482994"
+              }
+          }
+      }
+  }
+  headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
+  r = requests.post(url, data=j.dumps(data), headers=headers)
+  my_token = j.dumps(r.headers['X-Subject-Token'])
+  my_token = my_token.replace('"', '')
+  time.sleep(20)
+  url2 = "http://10.29.114.45:8774/v2.1/5403ac818d0b4e0f94140e686b482994/servers/detail?name=test_rami"
+  
+  headers = {'Content-type': 'application/json', 'X-Auth-Token': my_token}
+  r2 = requests.get(url2, headers=headers)
+  response = r2.content
+  json = j.loads(response.decode("utf-8"))
+  try:
+    name = json['servers'][0]['name']
+    ip = json['servers'][0]['addresses']['internal_portal_project'][0]['addr']
+  except IndexError:
+    name = "none found"
+    ip = "Server Not Created Yet"
+  #print(ip)
+  return ip
+#  return "Created"
+  
+  
+@app.route("/create_openshift_project/<project_name>")
+def create_project(project_name):
+  ssh = paramiko.SSHClient()
+  k = paramiko.RSAKey.from_private_key_file('/tmp/cb_key_pair.pem')
+  # OR k = paramiko.DSSKey.from_private_key_file(keyfilename)
+  ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+  ssh.connect(hostname='172.18.0.29', username='centos', pkey=k)
+  ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('sudo oc login -u admin -p admin && sudo oc new-project ' + project_name)
+  stdout = ssh_stdout.read()
+  stderr = ssh_stderr.read()
+  ssh.close()
+  config = {
+          'raise_on_warnings': True,
+          'failover' : [{
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.30',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.34',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.26',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  }]
+  }
+  conn = mysql.connector.connect(**config)
+  cursor = conn.cursor()
+  try:
+    for result in cursor.execute("""INSERT INTO portal_api.events (id,deployment_id, func_id, input, output, error, status) VALUES (NULL,'0','8','sudo oc login -u admin -p admin;sudo oc new-project + project_name',%s,%s,1)""",(stdout,stderr),multi=True):
+       if result.with_rows:
+          print("rows producted by statement '{}':".format(result.statement))
+          row = cursor.fetchone()
+          while row:
+             print(row)
+             row = cursor.fetchone()
+       else:
+          print("Number of rows affeted by statement '{}':{}".format(result.statement, result.rowcount))
+  except mysql.connector.Error as err:
+          print(err.msg)
+  conn.commit()
+  conn.close()
+  if stderr:
+    return stdout,stderr ##CHANGE THIS TO OUTPUT
+  if stdout:
+    return stdout
+
+## BEGIN MONGODB DEPLOYMENT for ROCKETCHAT OPENSHIFT
+@app.route("/deploy_openshift_mongo-rocketchat")##Change to deploy_string later
+def deploy_mongo():
+  ssh = paramiko.SSHClient()
+  k = paramiko.RSAKey.from_private_key_file('/tmp/cb_key_pair.pem')
+  # OR k = paramiko.DSSKey.from_private_key_file(keyfilename)
+  ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+  ssh.connect(hostname='172.18.0.29', username='centos', pkey=k)
+  ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('sudo oc new-app mongodb:latest -e MONGODB_ADMIN_PASSWORD=adminpassword -e MONGODB_USER=rocketchat -e MONGODB_PASSWORD=userpassword -e MONGODB_DATABASE=rocketchat')
+  stdout = ssh_stdout.read()
+  stderr = ssh_stderr.read()
+  ssh.close()
+  config = {
+          'raise_on_warnings': True,
+          'failover' : [{
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.30',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.34',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.26',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  }]
+  }
+  conn = mysql.connector.connect(**config)
+  cursor = conn.cursor()
+  try:
+    for result in cursor.execute("""INSERT INTO portal_api.events (id,deployment_id, func_id, input, output, error, status) VALUES (NULL,'1','11','oc new-app mongo deployment',%s,%s,1)""",(stdout,stderr),multi=True):
+       if result.with_rows:
+          print("rows producted by statement '{}':".format(result.statement))
+          row = cursor.fetchone()
+          while row:
+             print(row)
+             row = cursor.fetchone()
+       else:
+          print("Number of rows affeted by statement '{}':{}".format(result.statement, result.rowcount))
+  except mysql.connector.Error as err:
+          print(err.msg)
+  conn.commit()
+  conn.close()
+  if stderr:
+    return stdout,stderr ##CHANGE THIS TO OUTPUT
+  if stdout:
+    return stdout
+
+###DEPLOY ROCKETCHAT FRONT-END
+@app.route("/deploy_openshift_rocketchat-web")##Change to deploy_string later
+def deploy_rocketchat():
+  ssh = paramiko.SSHClient()
+  k = paramiko.RSAKey.from_private_key_file('/tmp/cb_key_pair.pem')
+  # OR k = paramiko.DSSKey.from_private_key_file(keyfilename)
+  ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+  ssh.connect(hostname='172.18.0.29', username='centos', pkey=k)
+  ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('sudo oc new-app rocketchat/rocket.chat:latest -e MONGO_URL=mongodb://rocketchat:userpassword@mongodb.rocketchat.svc:27017/rocketchat')
+  stdout = ssh_stdout.read()
+  stderr = ssh_stderr.read()
+  ssh.close()
+  config = {
+          'raise_on_warnings': True,
+          'failover' : [{
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.30',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.34',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.26',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  }]
+  }
+  conn = mysql.connector.connect(**config)
+  cursor = conn.cursor()
+  try:
+    for result in cursor.execute("""INSERT INTO portal_api.events (id,deployment_id, func_id, input, output, error, status) VALUES (NULL,'1','14','oc new-app rocketchat deployment',%s,%s,1)""",(stdout,stderr),multi=True):
+       if result.with_rows:
+          print("rows producted by statement '{}':".format(result.statement))
+          row = cursor.fetchone()
+          while row:
+             print(row)
+             row = cursor.fetchone()
+             print(row)
+             row = cursor.fetchone()
+       else:
+          print("Number of rows affeted by statement '{}':{}".format(result.statement, result.rowcount))
+  except mysql.connector.Error as err:
+          print(err.msg)
+  conn.commit()
+  conn.close()
+  if stderr:
+    return stdout,stderr ##CHANGE THIS TO OUTPUT
+  if stdout:
+    return stdout
+
+##END ROCKET CHAT FRONTEND DEPLOYMENT
+
+### BEGIN ROUTE CREATION FUNC
+#####################################
+###DEPLOY ROCKETCHAT FRONT-END
+@app.route("/create_route-rocketchat/<hostname>")##Change to deploy_string later
+def create_route(hostname):
+  ssh = paramiko.SSHClient()
+  k = paramiko.RSAKey.from_private_key_file('/tmp/cb_key_pair.pem')
+  # OR k = paramiko.DSSKey.from_private_key_file(keyfilename)
+  ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+  ssh.connect(hostname='172.18.0.29', username='centos', pkey=k)
+  ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command('sudo oc expose svc/rocketchat --hostname=' + hostname)
+  stdout = ssh_stdout.read()
+  stderr = ssh_stderr.read()
+  ssh.close()
+  config = {
+          'raise_on_warnings': True,
+          'failover' : [{
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.30',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.34',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  },
+                  {
+                  'user': 'root',
+                  'password': 'k@ngar0o1!',
+                  'host': '172.18.0.26',
+                  'port': 3306,
+                  'database': 'portal_api',
+                  }]
+  }
+  conn = mysql.connector.connect(**config)
+  cursor = conn.cursor()
+  try:
+    for result in cursor.execute("""INSERT INTO portal_api.events (id,deployment_id, func_id, input, output, error, status) VALUES (NULL,'1','17','oc create/expose route + hostname',%s,%s,1)""",(stdout,stderr),multi=True):
+       if result.with_rows:
+          print("rows producted by statement '{}':".format(result.statement))
+          row = cursor.fetchone()
+          while row:
+             print(row)
+             row = cursor.fetchone()
+             print(row)
+             row = cursor.fetchone()
+       else:
+          print("Number of rows affeted by statement '{}':{}".format(result.statement, result.rowcount))
+  except mysql.connector.Error as err:
+          print(err.msg)
+  conn.commit()
+  conn.close()
+  if stderr:
+    return stdout,stderr ##CHANGE THIS TO OUTPUT
+  if stdout:
+    return stdout
+## END ROUTE CREATION OPENSHIFT
+
+
+#  ssh_output = str(ssh_stdout1.read()) + str(ssh_stdout2.read()) + str(ssh_stdout3.read()) + str(ssh_stdout4.read()) + str(ssh_stdout5.read())
+#  ssh_output = ssh_output.replace("\\n","\r\n")
+#  ssh_error_out = str(ssh_stderr1.read()) + str(ssh_stderr2.read()) + str(ssh_stderr3.read()) + str(ssh_stderr4.read()) + str(ssh_stderr5.read())
+#  ssh_error_out = ssh_error_out.replace("\\n","\r\n")
+##  operation = """INSERT INTO portal_api.events (id, func_id, input, output, error, status) VALUES (NULL,'5','ssh_stdin',%s,%s,1)""",(ssh_output,ssh_error_out)
+#  #operation = 'select * from events'
+#  config = {
+#          'raise_on_warnings': True,
+#          'failover' : [{
+#                  'user': 'root',
+#                  'password': 'k@ngar0o1!',
+#                  'host': '172.18.0.30',
+#                  'port': 3306,
+#                  'database': 'portal_api',
+#                  },
+#                  {
+#                  'user': 'root',
+#                  'password': 'k@ngar0o1!',
+#                  'host': '172.18.0.34',
+#                  'port': 3306,
+#                  'database': 'portal_api',
+#                  },
+#                  {
+#                  'user': 'root',
+#                  'password': 'k@ngar0o1!',
+#                  'host': '172.18.0.26',
+#                  'port': 3306,
+#                  'database': 'portal_api',
+#                  }]
+#  }
+#  conn = mysql.connector.connect(**config)
+#
+#  cursor = conn.cursor()
+#
+#  try:
+#    for result in cursor.execute("""INSERT INTO portal_api.events (id, func_id, input, output, error, status) VALUES (NULL,'5','ssh_stdin',%s,%s,1)""",(ssh_output,ssh_error_out),multi=True):
+#       if result.with_rows:
+#          print("rows producted by statement '{}':".format(result.statement))
+#          row = cursor.fetchone()
+#          while row:
+#             print(row)
+#             row = cursor.fetchone()
+#       else:
+#          print("Number of rows affeted by statement '{}':{}".format(result.statement, result.rowcount))
+#  except mysql.connector.Error as err:
+#          print(err.msg)
+#  conn.commit()
+#  conn.close()
+#  return "DONE" ##CHANGE THIS TO OUTPUT
+ 
+app.run(host='0.0.0.0')
